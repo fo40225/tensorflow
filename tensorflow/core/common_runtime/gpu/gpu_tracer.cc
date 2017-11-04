@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
-
+#undef ERROR
 namespace {
 
 // Maps a MemcpyKind enum to a const string.

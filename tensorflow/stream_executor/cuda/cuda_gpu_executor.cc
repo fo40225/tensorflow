@@ -63,7 +63,7 @@ limitations under the License.
 #error \
     "CUDA runtime being included into CUDA GPU executor; should be driver only."
 #endif
-
+#undef ERROR
 extern bool FLAGS_check_gpu_leaks;
 bool FLAGS_prefer_cubin_to_ptx = true;
 

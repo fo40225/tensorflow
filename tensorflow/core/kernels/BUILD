@@ -104,7 +104,6 @@ tf_kernel_library(
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
         "strided_slice_op_gpu.cu.cc",
-        "slice_op_gpu.cu.cc",
     ],
     deps = [
         ":bounds_check",
@@ -982,23 +981,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "fused_batch_norm_op_test",
-    size = "small",
-    srcs = ["fused_batch_norm_op_test.cc"],
-    deps = [
-        ":fused_batch_norm_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
 
 tf_kernel_library(
     name = "gather_functor",
@@ -2739,7 +2721,6 @@ cc_library(
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
-        ":fused_batch_norm_op",
         ":in_topk_op",
         ":l2loss_op",
         ":lrn_op",
@@ -2755,7 +2736,6 @@ cc_library(
 NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
-    ":fused_batch_norm_util_gpu",
     ":ops_util",
     ":pooling_ops",
     "//tensorflow/core:framework",
@@ -2978,17 +2958,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_kernel_library(
-    name = "fused_batch_norm_util",
-    gpu_srcs = [
-        "fused_batch_norm_op.h",
-        "fused_batch_norm_op.cu.cc",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
 
 cc_library(
     name = "pooling_ops_hdrs",
@@ -4261,7 +4230,6 @@ filegroup(
         "dynamic_partition_op.cc",
         "fake_quant_ops.cc",
         "fifo_queue.cc",
-        "fused_batch_norm_op.cc",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({
