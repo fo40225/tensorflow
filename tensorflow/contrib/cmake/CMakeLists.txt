@@ -4,8 +4,25 @@ cmake_minimum_required(VERSION 3.5)
 # Project
 project(tensorflow C CXX)
 
+include(CheckCXXCompilerFlag)
+
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
+
+CHECK_CXX_COMPILER_FLAG("/Qstd=c++14" COMPILER_OPT_INTEL_WIN_CXX14_SUPPORTED)
+if(COMPILER_OPT_INTEL_WIN_CXX14_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Qstd=c++14")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("/std:c++14" COMPILER_OPT_MSVC_CXX14_SUPPORTED)
+if(COMPILER_OPT_MSVC_CXX14_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++14")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("-std=c++14" COMPILER_OPT_GNU_CXX14_SUPPORTED)
+if(COMPILER_OPT_GNU_CXX14_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+endif()
 
 # Actual source is the ../../.. directory
 get_filename_component(tf_contrib_source_dir ${tensorflow_SOURCE_DIR} PATH)
@@ -34,6 +51,10 @@ option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for th
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
+option(tensorflow_WIN_MSVC_MP "Build with Multiple Processes" ON)
+option(tensorflow_ENABLE_OPENMP_SUPPORT "Build with OpenMP" OFF)
+option(tensorflow_ENABLE_EIGEN_WITH_MKL "Enable Eigen with Intel MKL" OFF)
+option(tensorflow_ENABLE_MKLML_SUPPORT "Enable Intel MKL-ML support" OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -41,11 +62,16 @@ set(tensorflow_CUDA_VERSION "9.0" CACHE STRING "CUDA version to build against")
 set(tensorflow_CUDNN_VERSION "7" CACHE STRING "cuDNN version to build against")
 
 if(HAIKU)
-	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
+    option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
 else()
-	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" ON)
+    option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" ON)
 endif()
 
+if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else()
+    set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+endif()
 
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
@@ -79,8 +105,6 @@ if (WIN32)
   set(BOOL_WIN32 ON)
 else (WIN32)
   set(BOOL_WIN32 OFF)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 endif (WIN32)
 
 # [CLEANUP] Remove when done
@@ -100,17 +124,22 @@ set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
      CACHE PATH "Location where external projects will be downloaded.")
 mark_as_advanced(DOWNLOAD_LOCATION)
 
-if (tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
-	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-else()
-	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-endif()
-
 # TODO(jart): We should make this only apply to snapfn.cc
 add_definitions(-DSQLITE_OMIT_LOAD_EXTENSION)
 
 if (tensorflow_DISABLE_EIGEN_FORCEINLINE)
   add_definitions(-DEIGEN_STRONG_INLINE=inline)
+endif()
+
+if (tensorflow_ENABLE_OPENMP_SUPPORT)
+  find_package(OpenMP)
+  if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  else()
+    set(tensorflow_ENABLE_OPENMP_SUPPORT OFF)
+    message(FATAL_ERROR "OpenMP not supported")
+  endif()
 endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
@@ -119,17 +148,22 @@ if(WIN32)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
+
+  add_definitions(/bigobj /nologo /EHsc /GF /Gm-)
+
+  if(tensorflow_WIN_MSVC_MP)
+    add_definitions(/MP)
+  endif()
+
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
   add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
   add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+
   # Suppress linker warnings.
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set(tensorflow_EXTRA_LINKER_FLAGS ${tensorflow_EXTRA_LINKER_FLAGS} "/ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
+
   set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob2")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
@@ -140,26 +174,27 @@ if(WIN32)
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 endif()
 
 if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
-  include(CheckCXXCompilerFlag)
   CHECK_CXX_COMPILER_FLAG("-march=native" COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
   if (COMPILER_OPT_ARCH_NATIVE_SUPPORTED)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+  endif()
+
+  CHECK_CXX_COMPILER_FLAG("-mtune=native" COMPILER_OPT_TUNE_NATIVE_SUPPORTED)
+  if (COMPILER_OPT_TUNE_NATIVE_SUPPORTED)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mtune=native")
   endif()
 endif()
 
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
-  if (WIN32)
-    CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
-    else()
-      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
-    endif()
+  CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+  if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
   endif()
 endif()
 
@@ -203,6 +238,47 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
 )
+
+if (tensorflow_ENABLE_MKLML_SUPPORT)
+  set(tensorflow_ENABLE_EIGEN_WITH_MKL ON)
+  add_definitions(-DINTEL_MKL -DINTEL_MKL_ML)
+endif()
+
+if (tensorflow_ENABLE_EIGEN_WITH_MKL)
+  if(WIN32)
+    if(NOT MKL_HOME_PLATFORM)
+      set(MKL_HOME_PLATFORM "C:/Program Files (x86)/IntelSWTools/compilers_and_libraries/windows")
+    endif()
+  endif()
+
+  add_definitions(-DEIGEN_USE_MKL_ALL)
+  set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
+  set(MKL_LINK_DIRS
+      ${MKL_HOME_PLATFORM}/mkl/lib/intel64
+      ${MKL_HOME_PLATFORM}/compiler/lib/intel64)
+
+  include_directories(${MKL_INCLUDE_DIRS})
+  link_directories(${MKL_LINK_DIRS})
+
+  if (tensorflow_ENABLE_OPENMP_SUPPORT)
+    set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+        mkl_intel_lp64 mkl_intel_thread mkl_core)
+    if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+      set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+          libiomp5md)
+      set(tensorflow_EXTRA_LINKER_FLAGS ${tensorflow_EXTRA_LINKER_FLAGS} "/nodefaultlib:vcomp")
+    endif()
+  else()
+    set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+        mkl_intel_lp64 mkl_sequential mkl_core)
+  endif()
+endif()
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${tensorflow_EXTRA_LINKER_FLAGS}")
+set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${tensorflow_EXTRA_LINKER_FLAGS}")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${tensorflow_EXTRA_LINKER_FLAGS}")
+set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} ${tensorflow_EXTRA_LINKER_FLAGS}")
+
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination
@@ -394,8 +470,8 @@ if (tensorflow_ENABLE_GPU)
       cudnn_version_number=${tensorflow_CUDNN_VERSION})
   else(WIN32)
     set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
-	    cuda_version_number=${tensorflow_CUDA_VERSION}
-	    cudnn_version_number=${tensorflow_CUDNN_VERSION})
+        cuda_version_number=${tensorflow_CUDA_VERSION}
+        cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
 else(tensorflow_ENABLE_GPU)
   set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
