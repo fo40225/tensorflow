@@ -134,6 +134,7 @@ if(WIN32)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
   add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
   add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
   # Suppress linker warnings.
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
