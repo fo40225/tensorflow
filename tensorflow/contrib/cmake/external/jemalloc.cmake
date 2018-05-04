@@ -43,6 +43,7 @@ ExternalProject_Add(jemalloc
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target jemalloc
     INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping install step."
     CMAKE_CACHE_ARGS
+        -DCMAKE_CXX_FLAGS:STRING=${CMAKE_CXX_FLAGS}
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -Dwith-jemalloc-prefix:STRING=jemalloc_
