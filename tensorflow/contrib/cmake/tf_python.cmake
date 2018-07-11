@@ -747,10 +747,6 @@ add_custom_command(
       OUTPUT ${api_init_files}
       DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
 
-      # tensorflow/__init__.py depends on files generated in this step. So, remove it while
-      # this step is running since the files aren't there yet.
-      COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
-
       # Run create_python_api.py to generate API init files.
       COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
               "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/create_python_api.py"
