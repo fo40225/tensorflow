@@ -24,10 +24,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "cuda/include/cuda_runtime.h"
 
 namespace tensorflow {
 
@@ -38,9 +40,11 @@ class GPUBFCAllocator : public BFCAllocator {
   // 'cuda_gpu_id' refers to the ID of the GPU device within
   // the process and must reference a valid ID in the process.
   GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
-                  const string& name);
+                  const string& name,
+                  const std::vector<CudaGpuId>& valid_cuda_gpu_ids);
   GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
-                  const GPUOptions& gpu_options, const string& name);
+                  const GPUOptions& gpu_options, const string& name,
+                  const std::vector<CudaGpuId>& valid_cuda_gpu_ids);
   virtual ~GPUBFCAllocator() {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
@@ -51,19 +55,75 @@ class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
   explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
-                           bool use_unified_memory)
-      : stream_exec_(stream_exec), use_unified_memory_(use_unified_memory) {
+                           bool use_unified_memory,
+                           const std::vector<CudaGpuId> valid_cuda_gpu_ids)
+      : stream_exec_(stream_exec),
+        use_unified_memory_(use_unified_memory),
+        valid_cuda_gpu_ids_(valid_cuda_gpu_ids) {
     CHECK(stream_exec_ != nullptr);
   }
   ~GPUMemAllocator() override {}
 
   void* Alloc(size_t alignment, size_t num_bytes) override {
-    void* ptr = nullptr;
+    char* ptr = nullptr;
     if (num_bytes > 0) {
       if (use_unified_memory_) {
-        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
+        int64 available_memory = 0;
+        int64 total_memory = 0;
+        stream_exec_->DeviceMemoryUsage(&available_memory, &total_memory);
+        if (available_memory > num_bytes) {
+          ptr = static_cast<char*>(
+              stream_exec_->UnifiedMemoryAllocate(num_bytes));
+        } else {
+          for (CudaGpuId valid_cuda_gpu_id : valid_cuda_gpu_ids_) {
+            // TODO(fo40225): sort gpu ids by CU_DEVICE_P2P_ATTRIBUTE_PERFORMANCE_RANK
+            se::StreamExecutor* se =
+                GpuIdUtil::ExecutorForCudaGpuId(valid_cuda_gpu_id).ValueOrDie();
+            if (stream_exec_->CanEnablePeerAccessTo(se)) {
+              int64 device_available_memory = 0;
+              int64 device_total_memory = 0;
+              se->DeviceMemoryUsage(&device_available_memory,
+                                    &device_total_memory);
+              if (device_available_memory > num_bytes) {
+                ptr = static_cast<char*>(se->UnifiedMemoryAllocate(num_bytes));
+                // TODO(fo40225): use cuda driver api and a specific stream which associated with a device
+                cudaMemPrefetchAsync(ptr, num_bytes, valid_cuda_gpu_id.value());
+                break;
+              }
+            }
+          }
+          if (ptr == nullptr) {
+            ptr = static_cast<char*>(
+                stream_exec_->UnifiedMemoryAllocate(num_bytes));
+          }
+        }
+        // TODO(fo40225): advise only on linux and cc_major >= 6
+        size_t blockSize = num_bytes / valid_cuda_gpu_ids_.size();
+        for (size_t i = 0; i < valid_cuda_gpu_ids_.size(); ++i) {
+          // CU_MEM_ADVISE_SET_PREFERRED_LOCATION
+          stream_exec_->UnifiedMemoryAdvise(ptr + i * blockSize, blockSize, 3,
+                                            valid_cuda_gpu_ids_[i].value());
+          for (size_t j = 0; j < valid_cuda_gpu_ids_.size(); ++j) {
+            // CU_MEM_ADVISE_SET_ACCESSED_BY
+            stream_exec_->UnifiedMemoryAdvise(ptr + i * blockSize, blockSize, 5,
+                                              valid_cuda_gpu_ids_[j].value());
+          }
+        }
+        if (num_bytes % valid_cuda_gpu_ids_.size()) {
+          size_t advised_size = blockSize * valid_cuda_gpu_ids_.size();
+          size_t remain_size = num_bytes - advised_size;
+          // CU_MEM_ADVISE_SET_PREFERRED_LOCATION
+          stream_exec_->UnifiedMemoryAdvise(ptr + advised_size, remain_size, 3);
+          for (size_t k = 0; k < valid_cuda_gpu_ids_.size(); ++k) {
+            // CU_MEM_ADVISE_SET_ACCESSED_BY
+            stream_exec_->UnifiedMemoryAdvise(ptr + advised_size, remain_size,
+                                              5,
+                                              valid_cuda_gpu_ids_[k].value());
+          }
+        }
       } else {
-        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+        ptr = static_cast<char*>(
+            stream_exec_->AllocateArray<char>(num_bytes).opaque());
       }
     }
     return ptr;
@@ -83,7 +143,7 @@ class GPUMemAllocator : public SubAllocator {
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
   const bool use_unified_memory_ = false;
-
+  const std::vector<CudaGpuId> valid_cuda_gpu_ids_;
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };
 
