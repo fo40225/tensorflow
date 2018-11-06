@@ -821,8 +821,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   }
 
   int64 allocated_memory = 0;
-  const double per_process_gpu_memory_fraction =
-      gpu_options.per_process_gpu_memory_fraction();
+  const double per_process_gpu_memory_fraction = 1;
   if (per_process_gpu_memory_fraction > 1.0 ||
       gpu_options.experimental().use_unified_memory()) {
     int cc_major = 0, cc_minor = 0;
