@@ -24,7 +24,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "cuda/include/cuda_profiler_api.h"
-#include "cuda/include/nvToolsExt.h"
+#include "cuda/include/nvtx3/nvToolsExt.h"
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
