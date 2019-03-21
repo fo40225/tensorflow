@@ -416,6 +416,13 @@ class StreamExecutor {
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
 
+  port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+  createRnnVariableSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, int* seq_lens, dnn::DataType data_type);
+
+  port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+  createRnnVariableSequenceTensorDescriptor();
+
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>

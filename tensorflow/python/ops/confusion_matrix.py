@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python.util import deprecation
 
 def remove_squeezable_dimensions(
     labels, predictions, expected_rank_diff=0, name=None):

@@ -116,6 +116,7 @@ py_library(
         ":manip_ops",
         ":math_ops",
         ":metrics",
+        ":mode_keys",
         ":nccl_ops",
         ":nn",
         ":ops",
@@ -5862,6 +5863,32 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "auto_mixed_precision_test",
+    size = "small",
+    srcs = [
+        "grappler/auto_mixed_precision_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":constant_op",
+        ":dtypes",
+        ":math_ops",
+        ":nn",
+        ":ops",
+        ":random_ops",
+        ":control_flow_ops",
+        ":training",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    tags = [
+        "grappler",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(
     name = "nccl_ops_gen",
     visibility = ["//tensorflow:internal"],
@@ -5913,6 +5940,30 @@ py_binary(
     deps = [
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow_internal",
+    ],
+)
+
+py_library(
+    name = "mode_keys",
+    srcs = [
+        "training/mode_keys.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+    ],
+)
+
+py_test(
+    name = "mode_keys_test",
+    size = "small",
+    srcs = [
+        "training/mode_keys_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":mode_keys",
     ],
 )
 

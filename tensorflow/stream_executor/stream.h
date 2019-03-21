@@ -1865,7 +1865,9 @@ class Stream {
                          bool is_training,
                          ScratchAllocator *reserve_space_allocator,
                          ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
+                         dnn::ProfileResult *output_profile_result,
+                         const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+                         const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1883,7 +1885,9 @@ class Stream {
                          DeviceMemory<float> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
                          ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
+                         dnn::ProfileResult *output_profile_result,
+                         const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+                         const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   Stream &ThenRnnForward(const dnn::RnnDescriptor &rnn_desc,
                          const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1901,7 +1905,9 @@ class Stream {
                          DeviceMemory<double> *output_c_data, bool is_training,
                          ScratchAllocator *reserve_space_allocator,
                          ScratchAllocator *workspace_allocator,
-                         dnn::ProfileResult *output_profile_result);
+                         dnn::ProfileResult *output_profile_result,
+                         const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+                         const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   // Enqueue a backward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnBackward for more details.
@@ -1929,7 +1935,9 @@ class Stream {
       DeviceMemory<Eigen::half> *params_backprop_data,
       DeviceMemory<uint8> *reserve_space_data,
       ScratchAllocator *workspace_allocator,
-      dnn::ProfileResult *output_profile_result);
+      dnn::ProfileResult *output_profile_result,
+      const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+      const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1954,7 +1962,9 @@ class Stream {
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
-                          dnn::ProfileResult *output_profile_result);
+                          dnn::ProfileResult *output_profile_result,
+                          const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+                          const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   Stream &ThenRnnBackward(const dnn::RnnDescriptor &rnn_desc,
                           const dnn::RnnSequenceTensorDescriptor &input_desc,
@@ -1979,7 +1989,9 @@ class Stream {
                           DeviceMemory<double> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
-                          dnn::ProfileResult *output_profile_result);
+                          dnn::ProfileResult *output_profile_result,
+                          const dnn::RnnVariableSequenceTensorDescriptor &input_desc_ex,
+                          const dnn::RnnVariableSequenceTensorDescriptor &output_desc_ex);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.

@@ -57,7 +57,7 @@ class CandidatesTest(test.TestCase):
     # Verify that the solution satisfies the constraints.
     maximum_constraint_violation = np.amax(
         np.dot(constraints_matrix, distribution))
-    self.assertLessEqual(maximum_constraint_violation, 0)
+    self.assertLessEqual(maximum_constraint_violation, 1.0e-9)
     # Verify that the solution matches that which we expect.
     expected_distribution = np.array([0.37872711, 0.62127289, 0, 0])
     self.assertAllClose(expected_distribution, distribution, rtol=0, atol=1e-6)

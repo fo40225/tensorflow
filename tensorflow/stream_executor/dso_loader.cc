@@ -42,11 +42,12 @@ namespace stream_executor {
 namespace internal {
 
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "cublas", GetCudaVersion()),
+                                      "cublas", GetCudaLibVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
@@ -63,14 +64,14 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "cufft", GetCudaVersion()),
+                                      "cufft", GetCudaLibVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "curand", GetCudaVersion()),
+                                      "curand", GetCudaLibVersion()),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }

@@ -144,7 +144,8 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
     ],
-    tags = ["no_windows"],
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_windows","no_arm",],
 )
 
 cuda_py_test(
@@ -1599,7 +1600,9 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = ["no_gpu"],  # TODO(b/117928656)
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    # TODO(b/117928656) for 'no_gpu'
+    tags = ["no_gpu", "no_arm"],
 )
 
 tf_py_test(
@@ -1692,6 +1695,8 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
     ],
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_arm"],
 )
 
 cuda_py_test(
@@ -2634,7 +2639,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2652,7 +2657,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         # TODO(b/118887316): Re-enable this test in Kokoro.
         "no_oss",
@@ -2820,7 +2825,8 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["no_windows"],
+    # TODO(mconley): remove 'no_arm' tag once ignored test lists are merged in
+    tags = ["no_windows","no_arm",],
 )
 
 cuda_py_test(

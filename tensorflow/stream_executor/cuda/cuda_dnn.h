@@ -33,6 +33,7 @@ namespace cuda {
 class CUDAExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
+class CudnnRnnVariableSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
 
 // Opaque and unique identifier for the cuDNN plugin.
@@ -59,6 +60,14 @@ class CudnnSupport : public dnn::DnnSupport {
                                     int data_size,
                                     dnn::DataType data_type) override;
 
+  port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+  createRnnVariableSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, int *seq_lens,
+                                    dnn::DataType data_type) override;
+
+  port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+  createRnnVariableSequenceTensorDescriptor() override;
+
   port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
@@ -79,7 +88,9 @@ class CudnnSupport : public dnn::DnnSupport {
                     DeviceMemory<Eigen::half>* output_c_data, bool is_training,
                     ScratchAllocator* reserve_space_allocator,
                     ScratchAllocator* workspace_allocator,
-                    dnn::ProfileResult* output_profile_result) override;
+                    dnn::ProfileResult* output_profile_result, 
+                    const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                    const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
@@ -97,7 +108,9 @@ class CudnnSupport : public dnn::DnnSupport {
                     DeviceMemory<float>* output_c_data, bool is_training,
                     ScratchAllocator* reserve_space_allocator,
                     ScratchAllocator* workspace_allocator,
-                    dnn::ProfileResult* output_profile_result) override;
+                    dnn::ProfileResult* output_profile_result,
+                    const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                    const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                     const dnn::RnnSequenceTensorDescriptor& input_desc,
@@ -115,7 +128,9 @@ class CudnnSupport : public dnn::DnnSupport {
                     DeviceMemory<double>* output_c_data, bool is_training,
                     ScratchAllocator* reserve_space_allocator,
                     ScratchAllocator* workspace_allocator,
-                    dnn::ProfileResult* output_profile_result) override;
+                    dnn::ProfileResult* output_profile_result,
+                    const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                    const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
@@ -140,7 +155,9 @@ class CudnnSupport : public dnn::DnnSupport {
                      DeviceMemory<Eigen::half>* params_backprop_data,
                      DeviceMemory<uint8>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
-                     dnn::ProfileResult* output_profile_result) override;
+                     dnn::ProfileResult* output_profile_result,
+                     const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                     const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
@@ -165,7 +182,9 @@ class CudnnSupport : public dnn::DnnSupport {
                      DeviceMemory<float>* params_backprop_data,
                      DeviceMemory<uint8>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
-                     dnn::ProfileResult* output_profile_result) override;
+                     dnn::ProfileResult* output_profile_result,
+                     const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                     const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool DoRnnBackward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
                      const dnn::RnnSequenceTensorDescriptor& input_desc,
@@ -190,7 +209,9 @@ class CudnnSupport : public dnn::DnnSupport {
                      DeviceMemory<double>* params_backprop_data,
                      DeviceMemory<uint8>* reserve_space_data,
                      ScratchAllocator* workspace_allocator,
-                     dnn::ProfileResult* output_profile_result) override;
+                     dnn::ProfileResult* output_profile_result,
+                     const dnn::RnnVariableSequenceTensorDescriptor& input_desc_ex,
+                     const dnn::RnnVariableSequenceTensorDescriptor& output_desc_ex) override;
 
   bool GetConvolveAlgorithms(
       bool with_winograd_nonfused, int cc_major, int cc_minor,
@@ -742,7 +763,9 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<T>* output_c_data, bool is_training,
       ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
+      dnn::ProfileResult* output_profile_result,
+      const CudnnRnnVariableSequenceTensorDescriptor& input_desc_ex,
+      const CudnnRnnVariableSequenceTensorDescriptor& output_desc_ex);
 
   template <class T>
   port::Status DoRnnBackwardImpl(
@@ -768,7 +791,9 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<T>* params_backprop_data,
       DeviceMemory<uint8>* reserve_space_data,
       ScratchAllocator* workspace_allocator,
-      dnn::ProfileResult* output_profile_result);
+      dnn::ProfileResult* output_profile_result,
+      const CudnnRnnVariableSequenceTensorDescriptor& input_desc_ex,
+      const CudnnRnnVariableSequenceTensorDescriptor& output_desc_ex);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };

@@ -802,7 +802,7 @@ py_test(
     name = "training_generator_test",
     size = "enormous",
     srcs = ["engine/training_generator_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",

@@ -131,6 +131,10 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       # Load weights
       mnist_saver = saver.Saver()
       checkpoint_file = latest_checkpoint(model_dir)
+      if checkpoint_file is None:
+        raise ValueError('latest_checkpoint returned None. check if' +
+                         'model_dir={} is the right directory'.format(model_dir))
+            
       mnist_saver.restore(sess, checkpoint_file)
       # Freeze
       graph_def = graph_util.convert_variables_to_constants(
@@ -265,6 +269,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   def testEval(self):
     if not trt_convert.is_tensorrt_enabled():
       return
+
     model_dir = test.test_src_dir_path('contrib/tensorrt/test/testdata')
 
     accuracy_tf_native = self._Run(

@@ -125,6 +125,8 @@ static string GetSmName(std::pair<int, int> compute_capability) {
       {{6, 2}, 62},
       {{7, 0}, 70},
       {{7, 2}, 72},
+      // TODO(nluehr) update to 75 once LLVM supports it
+      {{7, 5}, 70},
   });
   int sm_version = 30;
   auto it = m->find(compute_capability);

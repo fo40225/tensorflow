@@ -401,6 +401,29 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
                                                         data_size, data_type);
 }
 
+port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+StreamExecutor::createRnnVariableSequenceTensorDescriptor(int seq_length,
+                                                  int batch_size, int data_size, int* seq_lens,
+                                                  dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnVariableSequenceTensorDescriptor(seq_length, batch_size,
+                                                        data_size, seq_lens, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnVariableSequenceTensorDescriptor>>
+StreamExecutor::createRnnVariableSequenceTensorDescriptor() {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnVariableSequenceTensorDescriptor();
+}
+
 port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
 StreamExecutor::createRnnStateTensorDescriptor(int num_layer, int batch_size,
                                                int data_size,

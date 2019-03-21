@@ -181,6 +181,11 @@ bool IsCommutative(const NodeDef& node);
 // value.
 bool IsPersistent(const NodeDef& node);
 
+// Returns true if the node op is marked as stateful, or if it was not found in
+// op_registry.
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry);
+bool IsStateful(const NodeDef node);  // use OpRegistry::Global()
+
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);
 bool IsFreeOfSideEffect(const NodeDef& node);  // use OpRegistry::Global()

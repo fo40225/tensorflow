@@ -345,8 +345,10 @@ class StudentTTest(test.TestCase):
     # undefined we say variance is undefined as well.  So test the first
     # member of var, making sure it is NaN, then replace with inf and compare
     # to scipy.
-    self.assertTrue(np.isnan(var[0]))
-    var[0] = np.inf
+    # TODO(nluehr) remove the following two lines in upstream, as the comment
+    # above does not seem to hold at least as of scipy 1.2.0.
+    # self.assertTrue(np.isnan(var[0]))
+    # var[0] = np.inf
 
     if not stats:
       return

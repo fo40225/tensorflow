@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 
@@ -55,6 +55,16 @@ BackendOptions& BackendOptions::set_intra_op_parallelism_threads(
 
 int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
+}
+
+BackendOptions& BackendOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+  return allowed_devices_;
 }
 
 // Define this in .cc file to avoid having to include eigen or forward declare
@@ -76,8 +86,9 @@ struct Backend::EigenThreadPoolWrapper {
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto stream_executors,
-                      PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSIGN_OR_RETURN(
+      auto stream_executors,
+      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,

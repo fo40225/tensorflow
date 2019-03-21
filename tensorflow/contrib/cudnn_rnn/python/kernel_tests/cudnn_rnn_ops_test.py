@@ -325,8 +325,8 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
                             time,
                             num_layers,
                             dtype,
-                            rtol=2e-6,
-                            atol=2e-6):
+                            rtol=4e-6,
+                            atol=4e-6):
     with self.session(use_gpu=True) as sess:
       (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad, cu_inp_grad,
        state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad, cu_bgrad) = RunLSTM(
@@ -348,7 +348,7 @@ class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
     self._test_training_helper(num_units, input_size, batch_size, time,
-                               num_layers, dtypes.float32)
+                               num_layers, dtypes.float32, rtol=5e-6, atol=5e-6)
 
   @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
   @unittest.skipUnless(test.is_built_with_cuda(),
@@ -638,7 +638,7 @@ class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
     if not context.context().num_gpus():
       self.skipTest("No GPUs found")
     self._test_training_helper(num_units, input_size, batch_size, time,
-                               num_layers, dtypes.float32)
+                               num_layers, dtypes.float32, rtol=5e-6, atol=5e-6)
 
   @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
   @unittest.skipUnless(test.is_built_with_cuda(),

@@ -2984,6 +2984,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "//third_party/eigen3",
         "//tensorflow/core/grappler:grappler_item",
+        "@local_config_cuda//cuda:nvtools",
     ] + mkl_deps(),
     alwayslink = 1,
 )

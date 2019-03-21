@@ -51,53 +51,54 @@ struct scalar_arg_op<std::complex<double>> {
 };
 #endif
 
-template <typename T>
-struct scalar_asinh_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-#if EIGEN_HAS_CXX11_MATH
-    return numext::asinh(a);
-#else
-    return std::asinh(a);
-#endif  // EIGEN_HAS_CXX11_MATH
-  }
-};
-template <typename T>
-struct functor_traits<scalar_asinh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
-
-template <typename T>
-struct scalar_acosh_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-#if EIGEN_HAS_CXX11_MATH
-    return numext::acosh(a);
-#else
-    return std::acosh(a);
-#endif  // EIGEN_HAS_CXX11_MATH
-  }
-};
-template <typename T>
-struct functor_traits<scalar_acosh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
-
-template <typename T>
-struct scalar_atanh_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-#if EIGEN_HAS_CXX11_MATH
-    return numext::atanh(a);
-#else
-    return std::atanh(a);
-#endif  // EIGEN_HAS_CXX11_MATH
-  }
-};
-template <typename T>
-struct functor_traits<scalar_atanh_op<T>> {
-  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
-};
+// Inverse Hyperbolics now available in Eigen
+//template <typename T>
+//struct scalar_asinh_op {
+//  EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
+//  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+//#if EIGEN_HAS_CXX11_MATH
+//    return numext::asinh(a);
+//#else
+//    return std::asinh(a);
+//#endif  // EIGEN_HAS_CXX11_MATH
+//  }
+//};
+//template <typename T>
+//struct functor_traits<scalar_asinh_op<T>> {
+//  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+//};
+//
+//template <typename T>
+//struct scalar_acosh_op {
+//  EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
+//  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+//#if EIGEN_HAS_CXX11_MATH
+//    return numext::acosh(a);
+//#else
+//    return std::acosh(a);
+//#endif  // EIGEN_HAS_CXX11_MATH
+//  }
+//};
+//template <typename T>
+//struct functor_traits<scalar_acosh_op<T>> {
+//  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+//};
+//
+//template <typename T>
+//struct scalar_atanh_op {
+//  EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
+//  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+//#if EIGEN_HAS_CXX11_MATH
+//    return numext::atanh(a);
+//#else
+//    return std::atanh(a);
+//#endif  // EIGEN_HAS_CXX11_MATH
+//  }
+//};
+//template <typename T>
+//struct functor_traits<scalar_atanh_op<T>> {
+//  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+//};
 
 // TODO(rmlarsen): This is a workaround for upstream change
 // https://bitbucket.org/eigen/eigen/commits/f339468d04d0f87caeb6cab9aef568627e9f6ea9
@@ -209,7 +210,7 @@ struct scalar_left : private Binary {
   typedef Tout result_type;
   const Tin* left;
 
-  EIGEN_DEVICE_FUNC inline scalar_left(const scalar_left& other) = default;
+  inline scalar_left(const scalar_left& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_left(const Tin* c, Args... args)
@@ -239,7 +240,7 @@ struct scalar_right : private Binary {
   typedef Tout result_type;
   const Tin* right;
 
-  EIGEN_DEVICE_FUNC inline scalar_right(const scalar_right& other) = default;
+  inline scalar_right(const scalar_right& other) = default;
 
   template <typename... Args>
   EIGEN_DEVICE_FUNC inline explicit scalar_right(const Tin* c, Args... args)
