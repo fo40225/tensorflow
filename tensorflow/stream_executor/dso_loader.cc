@@ -47,7 +47,7 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetCublasDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "cublas", GetCudaLibVersion()),
+                                      "cublas", "64_10"),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
@@ -64,14 +64,14 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 /* static */ port::Status DsoLoader::GetCufftDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "cufft", GetCudaLibVersion()),
+                                      "cufft", "64_10"),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
 
 /* static */ port::Status DsoLoader::GetCurandDsoHandle(void** dso_handle) {
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
-                                      "curand", GetCudaLibVersion()),
+                                      "curand", "64_10"),
                                   GetCudaLibraryDirPath()),
                       dso_handle);
 }
