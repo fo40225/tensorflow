@@ -496,7 +496,18 @@ class CudnnTensorDescriptor {
                         cudnnDataType_t elem_type)
       : handle_(CreateTensorDescriptor()) {
     switch (batch_descriptor.layout()) {
-      case dnn::DataLayout::kBatchYXDepth:
+      case dnn::DataLayout::kBatchYXDepth: {
+        const int nd = batch_descriptor.ndims() + 2;
+        // cuDNN requires the strides and dims to be ordered as BDYX.
+        std::vector<int64> dims64 =
+            batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
+        std::vector<int> dims(nd);
+        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
+                       &CheckedNarrowing<int64, int>);
+        CHECK_CUDNN_OK(cudnnSetTensorNdDescriptorEx(handle_.get(), 
+                       CUDNN_TENSOR_NHWC, elem_type, nd, dims.data()))
+            << "batch_descriptor: " << batch_descriptor.ToString();
+      } break;
       case dnn::DataLayout::kBatchDepthYX: {
         const int nd = batch_descriptor.ndims() + 2;
         // cuDNN requires the strides and dims to be ordered as BDYX.
@@ -597,6 +608,20 @@ bool TensorOpMathEnabled() {
   return is_enabled;
 }
 
+// A helper function to decide whether to enable the
+// TENSOR_OP_MATH_ALLOW_CONVERSION math type, which allows casts from fp32 to
+// fp16.
+bool TensorOpFp32MathEnabled() {
+  static bool is_enabled = [] {
+    bool ret;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_ENABLE_CUDNN_TENSOR_OP_MATH_FP32",
+                                       /*default=*/false, &ret));
+    return ret;
+  }();
+  return is_enabled;
+}
+
 // A helper function to decide whether to enable the TENSOR_OP_MATH math type
 // for RNNs.
 bool RnnTensorOpMathEnabled() {
@@ -606,6 +631,20 @@ bool RnnTensorOpMathEnabled() {
         tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_RNN_TENSOR_OP_MATH",
                                        /*default_val=*/false, &is_disabled));
     return !is_disabled;
+  }();
+  return is_enabled;
+}
+
+// A helper function to decide whether to enable the
+// TENSOR_OP_MATH_ALLOW_CONVERSION math type for RNNs, which allows casts from
+// fp32 to fp16.
+bool RnnTensorOpFp32MathEnabled() {
+  static bool is_enabled = [] {
+    bool ret;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_ENABLE_CUDNN_RNN_TENSOR_OP_MATH_FP32",
+        /*default=*/false, &ret));
+    return ret;
   }();
   return is_enabled;
 }
@@ -632,14 +671,18 @@ bool BatchnormSpatialPersistentEnabled() {
 
 // A helper function to decide whether to enable deterministic functionality.
 bool RequireDeterminism() {
-  static bool is_enabled = [] {
-    bool is_enabled = false;
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    bool cudnn_deterministic = false;
     TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
                                                /*default_val=*/false,
-                                               &is_enabled));
-    return is_enabled;
+                                               &cudnn_deterministic));
+    return deterministic_ops || cudnn_deterministic;
   }();
-  return is_enabled;
+  return require_determinism;
 }
 
 // Turns a ConvolutionDescriptor structure into a cudnn convolution handle
@@ -697,6 +740,11 @@ class CudnnConvolutionDescriptor {
 #if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
+#if CUDNN_VERSION >= 7200
+    if (math_type == CUDNN_TENSOR_OP_MATH && TensorOpFp32MathEnabled()) {
+      math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
+    }
+#endif
     if (TensorOpMathEnabled()) {
       CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
     }
@@ -1002,8 +1050,8 @@ class CudnnRnnParamsDescriptor {
 class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   CudnnRnnDescriptor(const CudnnHandle& cudnn, gpu::RnnDescriptor rnn_desc,
                      PersistentRnnPlan rnn_plan, int num_layers,
-                     int hidden_size, int input_size, int batch_size,
-                     cudnnRNNInputMode_t input_mode,
+                     int hidden_size, int input_size, int c_size,
+                     int batch_size, cudnnRNNInputMode_t input_mode,
                      cudnnDirectionMode_t direction_mode,
                      cudnnRNNMode_t rnn_mode, cudnnDataType_t data_type,
                      cudnnDataType_t compute_type,
@@ -1015,6 +1063,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
         num_layers_(num_layers),
         hidden_size_(hidden_size),
         input_size_(input_size),
+        c_size_(c_size),
         batch_size_(batch_size),
         rnn_algo_(ToCudnnRNNAlgo(algorithm_config.algorithm())),
         input_mode_(input_mode),
@@ -1031,7 +1080,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 
   static port::StatusOr<CudnnRnnDescriptor> Create(
       const CudnnHandle& cudnn, int num_layers, int hidden_size, int input_size,
-      int batch_size, cudnnRNNInputMode_t input_mode,
+      int c_size, int batch_size, cudnnRNNInputMode_t input_mode,
       cudnnDirectionMode_t direction_mode, cudnnRNNMode_t rnn_mode,
       cudnnDataType_t data_type, cudnnDataType_t compute_type,
       const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
@@ -1044,12 +1093,27 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config.algorithm());
 
     // TODO: allow the user to choose an algorithm.
+    int unified_size = hidden_size;
+    if (c_size != 0 && hidden_size < c_size) {
+      unified_size = c_size;
+    }
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
-        cudnn.handle(), /*rnnDesc=*/rnn_desc.get(), /*hiddenSize=*/hidden_size,
-        /*numLayers=*/num_layers, /*dropoutDesc=*/dropout_desc.handle(),
-        /*inputMode=*/input_mode, /*direction=*/direction_mode,
-        /*mode=*/rnn_mode, /*algo=*/rnn_algo,
+        cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
+        /*hiddenSize=*/unified_size, /*numLayers=*/num_layers,
+        /*dropoutDesc=*/dropout_desc.handle(), /*inputMode=*/input_mode,
+        /*direction=*/direction_mode, /*mode=*/rnn_mode, /*algo=*/rnn_algo,
         /*dataType=*/compute_type));
+    if (c_size != 0 && hidden_size < c_size) {
+#if CUDNN_VERSION >= 7101
+      RETURN_IF_CUDNN_ERROR(cudnnSetRNNProjectionLayers(
+          cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
+          /*recProjSize=*/hidden_size, /*outProjSize=*/0));
+#else
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "No supported cudnnSetRNNProjectionLayers when "
+                          "CUDNN_VERSION < 7.1.1");
+#endif
+    }
 
     // TODO: For now, we only use cudnnRNN**Ex API to process padded inputs.
     // But in the future if these APIs are used to process full length arrays,
@@ -1087,20 +1151,33 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // We can only reasonably expect the user to handle the subsequent failure
     // in profile mode, which is run with algorithms returned from
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
-    // use tensor ops).
-    if (RnnTensorOpMathEnabled() && algorithm_config.algorithm().has_value()) {
-      cudnnMathType_t math_type =
-          algorithm_config.algorithm()->tensor_ops_enabled()
-              ? CUDNN_TENSOR_OP_MATH
-              : CUDNN_DEFAULT_MATH;
+    // use tensor ops). CuDNN 7.2.1 fixed this issue.
+    if (RnnTensorOpMathEnabled()) {
+      cudnnMathType_t math_type;
+      if (algorithm_config.algorithm().has_value()) {
+        math_type = algorithm_config.algorithm()->tensor_ops_enabled()
+                        ? CUDNN_TENSOR_OP_MATH
+                        : CUDNN_DEFAULT_MATH;
+      } else {
+#if CUDNN_VERSION >= 7201
+        math_type = CUDNN_TENSOR_OP_MATH;
+#else
+        math_type = CUDNN_DEFAULT_MATH;
+#endif // CUDNN_VERSION >= 7201
+      }
+#if CUDNN_VERSION >= 7200
+      if (math_type == CUDNN_TENSOR_OP_MATH && RnnTensorOpFp32MathEnabled()) {
+        math_type = CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION;
+      }
+#endif // CUDNN_VERSION >= 7200
       CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
     }
-#endif
+#endif // CUDNN_VERSION >= 7000
 
     return CudnnRnnDescriptor(cudnn, std::move(rnn_desc), std::move(rnn_plan),
-                              num_layers, hidden_size, input_size, batch_size,
-                              input_mode, direction_mode, rnn_mode, data_type,
-                              compute_type, algorithm_config,
+                              num_layers, hidden_size, input_size, c_size,
+                              batch_size, input_mode, direction_mode, rnn_mode,
+                              data_type, compute_type, algorithm_config,
                               std::move(dropout_desc), std::move(params_desc));
   }
 
@@ -1108,6 +1185,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   int num_layers() const { return num_layers_; }
   int hidden_size() const { return hidden_size_; }
   int input_size() const { return input_size_; }
+  int c_size() const { return c_size_; }
   int batch_size() const { return batch_size_; }
   cudnnRNNInputMode_t input_mode() const { return input_mode_; }
   cudnnDirectionMode_t direction_mode() const { return direction_mode_; }
@@ -1136,6 +1214,9 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   int num_layers_;
   int hidden_size_;
   int input_size_;
+  // c_size_ is the size of cell state, which will be different from
+  // hidden_size_ if the projection is used. 
+  int c_size_;
   // batch_size_ is set to -1 when not using CUDNN_RNN_ALGO_PERSIST_DYNAMIC
   // algorithm.
   int batch_size_;
@@ -1152,6 +1233,66 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 };
 
 namespace {
+
+port::Status CheckAndFetchProjectionWeights(
+    const CudnnHandle& cudnn, cudnnRNNDescriptor_t rnn_desc, int layer,
+    TensorDescriptor& input_desc, FilterDescriptor& filter_desc,
+    FilterDescriptor& region_desc_handle,
+    dnn::RnnDescriptor::ParamsRegions& weights) {
+#if CUDNN_VERSION >= 7101
+    int hidden_size_v;
+    int num_layers_v;
+    cudnnDropoutDescriptor_t dropout_desc;
+    cudnnRNNInputMode_t input_mode;
+    cudnnDirectionMode_t direction;
+    cudnnRNNMode_t mode;
+    cudnnRNNAlgo_t algo;
+    cudnnDataType_t data_type;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
+        /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+        /*hiddenSize=*/&hidden_size_v,
+        /*numLayers=*/&num_layers_v,
+        /*dropoutDesc=*/&dropout_desc,
+        /*inputMode=*/&input_mode,
+        /*direction=*/&direction,
+        /*mode=*/&mode,
+        /*algo=*/&algo,
+        /*dataType=*/&data_type));
+    int rec_proj_size_v;
+    int out_proj_size_v;
+    RETURN_IF_CUDNN_ERROR(cudnnGetRNNProjectionLayers(
+        /*handle=*/cudnn.handle(),
+        /*rnnDesc=*/rnn_desc,
+        /*recProjSize*/ &rec_proj_size_v,
+        /*outProjSize*/ &out_proj_size_v));
+    if (rec_proj_size_v != hidden_size_v) {
+      void* offset = nullptr;
+      int region_id = 8;
+      RETURN_IF_CUDNN_ERROR(cudnnGetRNNLinLayerMatrixParams(
+          /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+          /*layer=*/layer, /*xDesc=*/input_desc.get(),
+          /*wDesc=*/filter_desc.get(),
+          /*w=*/nullptr, /*linLayerID=*/region_id,
+          /*linLayerMatDesc=*/region_desc_handle.get(),
+          /*linLayerMat or linLayerBias=*/&offset));
+      int dims[] = {1, 1, 1};
+      cudnnDataType_t data_type;
+      cudnnTensorFormat_t tensor_format;
+      int n_dims;
+      RETURN_IF_CUDNN_ERROR(cudnnGetFilterNdDescriptor(
+          /*filterDesc=*/region_desc_handle.get(),
+          /*nbDimsRequested=*/sizeof(dims) / sizeof(dims[0]),
+          /*dataType=*/&data_type, /*format=*/&tensor_format,
+          /*nbDims=*/&n_dims, /*filterDimA=*/dims));
+      int64 size =
+          dims[0] * dims[1] * dims[2] * CudnnDataTypeToByteSize(data_type);
+      dnn::RnnDescriptor::ParamsRegion region = {
+          reinterpret_cast<int64>(offset), size};
+      weights.push_back(region);
+    }
+#endif // CUDNN_VERSION >= 7101
+  return port::Status::OK();
+}
 
 port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
     const CudnnHandle& cudnn, int input_size, cudnnDataType_t data_type,
@@ -1240,6 +1381,10 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
         (type == 0 ? weights : biases).push_back(region);
       }
     }
+    TF_RETURN_IF_ERROR(CheckAndFetchProjectionWeights(cudnn, rnn_desc, layer,
+                                                      input_desc, filter_desc,
+                                                      region_desc_handle,
+                                                      weights));
   }
 
   return CudnnRnnParamsDescriptor(std::move(filter_desc), params_size_in_bytes,
@@ -1404,6 +1549,7 @@ struct RnnModelDims {
   int max_seq_length = 0;
   int hidden_size = 0;
   int input_size = 0;
+  int c_size = 0;
   int dir_count = 0;
 };
 
@@ -1429,6 +1575,7 @@ port::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
   model_dims.max_seq_length = input_desc.max_seq_length();
   model_dims.hidden_size = rnn_desc.hidden_size();
   model_dims.input_size = input_desc.data_size();
+  model_dims.c_size = rnn_desc.c_size();
   model_dims.dir_count =
       (rnn_desc.direction_mode() == CUDNN_BIDIRECTIONAL) ? 2 : 1;
 
@@ -1441,7 +1588,7 @@ port::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
   }
   if (!(input_h_desc.num_layers() == input_c_desc.num_layers() &&
         input_h_desc.batch_size() == input_c_desc.batch_size() &&
-        input_h_desc.data_size() == input_c_desc.data_size())) {
+        input_h_desc.data_size() <= input_c_desc.data_size())) {
     return port::Status(port::error::INVALID_ARGUMENT, "Invalid input_c shape");
   }
   if (!(output_desc.max_seq_length() == model_dims.max_seq_length &&
@@ -1458,7 +1605,7 @@ port::StatusOr<RnnModelDims> ExtractAndCheckRnnForward(
   }
   if (!(input_h_desc.num_layers() == output_c_desc.num_layers() &&
         input_h_desc.batch_size() == output_c_desc.batch_size() &&
-        input_h_desc.data_size() == output_c_desc.data_size())) {
+        input_h_desc.data_size() <= output_c_desc.data_size())) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "Invalid output_c shape");
   }
@@ -1863,7 +2010,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 CudnnSupport::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size, int batch_size,
+    int num_layers, int hidden_size, int input_size, int c_size, int batch_size,
     dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
     dnn::RnnMode rnn_mode, dnn::DataType data_type,
     const dnn::AlgorithmConfig& algorithm_config, float dropout, uint64 seed,
@@ -1874,7 +2021,7 @@ CudnnSupport::createRnnDescriptor(
   SE_ASSIGN_OR_RETURN(
       CudnnRnnDescriptor rnn_desc,
       CudnnRnnDescriptor::Create(
-          cudnn, num_layers, hidden_size, input_size, batch_size,
+          cudnn, num_layers, hidden_size, input_size, c_size, batch_size,
           ToCudnnRnnInputMode(input_mode),
           ToCudnnRnnDirectionMode(direction_mode), ToCudnnRnnMode(rnn_mode),
           ToCudnnDataType(data_type), GetRnnComputeType(data_type),

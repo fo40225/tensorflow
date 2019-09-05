@@ -20,10 +20,14 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
+// TODO(benbarsdell): The GOOGLE_CUDA macro is never defined here because this
+// is not in a cuda build target. We should probably use
+// device.environment["cuda"] instead of CUDA_VERSION directly to avoid this
+// problem.
+//#if GOOGLE_CUDA
 // Needed for CUDA_VERSION macro.
 #include "third_party/gpus/cuda/include/cuda.h"
-#endif  // GOOGLE_CUDA
+//#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace grappler {
@@ -63,6 +67,7 @@ class AutoMixedPrecisionLists {
     auto list = gtl::FlatSet<string> {
 #if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
       "BatchMatMul",
+      "BatchMatMulV2",
 #endif
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",

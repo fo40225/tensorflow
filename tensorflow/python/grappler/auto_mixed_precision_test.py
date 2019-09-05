@@ -28,10 +28,12 @@ from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -41,6 +43,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training.experimental.mixed_precision import auto_mixed_precision_scope
 
 
 def _input(shape):
@@ -251,6 +254,30 @@ def _build_node_map(nodes):
   return node_map
 
 
+def _example_noninlined_funcdef_shape(op):
+  return [op.inputs[0].shape]
+
+
+@function.Defun(shape_func=_example_noninlined_funcdef_shape,
+                func_name="example_noninlined_funcdef_grad", noinline=True)
+def _example_noninlined_funcdef_grad(features, grad):
+  """Gradient of Swish function defined below."""
+  sigmoid_features = math_ops.sigmoid(features)
+  activation_grad = (
+      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+  return grad * activation_grad
+
+
+@function.Defun(
+    grad_func=_example_noninlined_funcdef_grad,
+    shape_func=_example_noninlined_funcdef_shape,
+    func_name="example_noninlined_funcdef",
+    noinline=True)
+def _example_noninlined_funcdef(features):
+  """Computes the Swish activation function: `x * sigmoid(x)`."""
+  return features * math_ops.sigmoid(features)
+
+
 class AutoMixedPrecisionTest(test.TestCase):
   """Tests the Grappler auto mixed precision optimizer."""
   IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
@@ -274,6 +301,10 @@ class AutoMixedPrecisionTest(test.TestCase):
   def _assert_output_fp16(self, node_map, node_name, output_port=0):
     self.assertEqual(node_map[node_name].output_info[output_port].dtype,
                      types_pb2.DT_HALF)
+
+  def _assert_output_fp32(self, node_map, node_name, output_port=0):
+    self.assertEqual(node_map[node_name].output_info[output_port].dtype,
+                     types_pb2.DT_FLOAT)
 
   def _run(self, fetches):
     """Runs the graph and returns the evaluation of the fetches."""
@@ -550,6 +581,56 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_propagation_through_simple_loop_8(self):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')
+
+  @test_util.run_deprecated_v1
+  def test_noninlined_funcdef(self):
+    """Test graph with non-inlined function subgraph.
+
+    This requires the grappler pass to handle an OpDef that only appears in the
+    graph's function registry instead of the global op registry.
+    """
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y = _matmul_act(x)
+      y = _example_noninlined_funcdef(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (g, y)
+
+      output_val_ref, output_val, cost_graph = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+
+      self._assert_output_fp16(node_map, 'MatMul')
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+
+  @test_util.run_deprecated_v1
+  def test_scope_disable(self):
+    """Test graph with convolution followed by batch norm."""
+    with compat.forward_compatibility_horizon(2019, 11, 11):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        y = _input([2, 8, 8, 1])
+        with auto_mixed_precision_scope(False):
+          x = _conv_bn(y)
+          with auto_mixed_precision_scope(True):
+            x = _conv_bn(x)
+        output = gradients.gradients(x, [y])
+        output_val_ref, output_val, cost_graph = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+
+        self._assert_output_fp32(node_map, 'Conv2D')
+        self._assert_output_fp32(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'Conv2D_1')
+        self._assert_output_fp32(node_map, 'FusedBatchNormV3_1')
+        self._assert_output_fp32(node_map,
+                                 'gradients/Conv2D_grad/Conv2DBackpropInput')
+        self._assert_output_fp16(node_map,
+                                 'gradients/Conv2D_1_grad/Conv2DBackpropInput')
+        self.assertEqual(num_to_fp16, 2)  # Before Conv2D_1:0, Conv2D_1:1
+        self.assertEqual(num_to_fp32, 2)  # After Conv2D_1 and Conv2D_1_grad
+        self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 
 if __name__ == '__main__':
