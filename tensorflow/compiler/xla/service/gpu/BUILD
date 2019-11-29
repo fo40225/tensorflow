@@ -11,6 +11,7 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
+    "if_nccl",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -384,7 +385,7 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_cuda([
+    ] + if_nccl([
         "@local_config_nccl//:nccl",
     ]),
 )
@@ -1020,7 +1021,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
-        "//tensorflow/compiler/xla/service:convolution_group_converter",
+        "//tensorflow/compiler/xla/service:depthwise_convolution_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",

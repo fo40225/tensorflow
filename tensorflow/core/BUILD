@@ -2816,6 +2816,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "util/presized_cuckoo_map.h",
     "util/tensor_slice_set.h",
     "util/tensor_slice_util.h",
+    "util/xla_config_registry.h",
 ]
 
 tf_cuda_library(
@@ -3279,6 +3280,7 @@ tf_cuda_library(
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:traceme",
+        "@local_config_cuda//cuda:nvtools",
         "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + mkl_deps(),
     alwayslink = 1,
