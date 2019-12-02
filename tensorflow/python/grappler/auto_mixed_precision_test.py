@@ -19,20 +19,26 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import numpy as np
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import tf2
 
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -40,8 +46,11 @@ from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training.experimental.mixed_precision import auto_mixed_precision_scope
 
 
 def _input(shape):
@@ -65,6 +74,9 @@ def _conv2d(x, w):
   """Returns a 2d convolution layer with full stride."""
   return nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
 
+def _conv3d(x, w):
+  """Returns a 3d convolution layer with full stride."""
+  return nn.conv3d(x, w, strides=[1, 1, 1, 1, 1], padding='SAME')
 
 def _max_pool_2x2(x):
   """Downsamples a feature map by 2X."""
@@ -86,6 +98,20 @@ def _conv_bn(x):
   s = _weight([6])
   o = _weight([6])
   y, _, _ = _fused_batchnorm(x, s, o)
+  y = array_ops.identity(y)
+  return y
+
+
+def _conv3d_bn(x):
+  """Conv3D followed by batchnorm."""
+  in_ch = x.get_shape().as_list()[-1]
+  f = _weight([3, 3, 3, in_ch, 6])
+  x = _conv3d(x, f)
+  s = _weight([6])
+  o = _weight([6])
+  x = array_ops.reshape(x, [-1, 8, 8, 6])
+  y, _, _ = _fused_batchnorm(x, s, o)
+  y = array_ops.reshape(y, [-1, 8, 8, 8, 6])
   y = array_ops.identity(y)
   return y
 
@@ -226,21 +252,21 @@ def _get_config(auto_mixed_precision=True):
   return config
 
 
-def _is_cast_to_fp16(node_name):
-  return node_name.endswith('-CastToFp16-AutoMixedPrecision')
+def _is_cast_to_fp16(node_name, node_op):
+  return node_name.endswith('-CastToFp16-AutoMixedPrecision') and node_op == "Cast"
 
 
-def _is_cast_to_fp32(node_name):
-  return node_name.endswith('-CastToFp32-AutoMixedPrecision')
+def _is_cast_to_fp32(node_name, node_op):
+  return node_name.endswith('-CastToFp32-AutoMixedPrecision') and node_op == "Cast"
 
 
-def _count_casts(nodes):
+def _count_casts(partition_graph):
   num_to_fp16 = 0
   num_to_fp32 = 0
-  for node in nodes:
-    if _is_cast_to_fp16(node.name):
+  for node in partition_graph.node:
+    if _is_cast_to_fp16(node.name, node.op):
       num_to_fp16 += 1
-    elif _is_cast_to_fp32(node.name):
+    elif _is_cast_to_fp32(node.name, node.op):
       num_to_fp32 += 1
   return num_to_fp16, num_to_fp32
 
@@ -302,6 +328,10 @@ class AutoMixedPrecisionTest(test.TestCase):
     self.assertEqual(node_map[node_name].output_info[output_port].dtype,
                      types_pb2.DT_HALF)
 
+  def _assert_output_fp32(self, node_map, node_name, output_port=0):
+    self.assertEqual(node_map[node_name].output_info[output_port].dtype,
+                     types_pb2.DT_FLOAT)
+
   def _run(self, fetches):
     """Runs the graph and returns the evaluation of the fetches."""
     with session.Session(config=_get_config(False)) as sess:
@@ -311,9 +341,10 @@ class AutoMixedPrecisionTest(test.TestCase):
     with session.Session(config=_get_config()) as sess:
       sess.run(variables.global_variables_initializer())
       metadata = config_pb2.RunMetadata()
-      output_val = sess.run(fetches, run_metadata=metadata)
+      run_opts = config_pb2.RunOptions(output_partition_graphs=True)
+      output_val = sess.run(fetches, run_metadata=metadata, options=run_opts)
 
-    return output_val_ref, output_val, metadata.cost_graph
+    return output_val_ref, output_val, metadata.cost_graph, metadata.partition_graphs
 
   def _run_simple_loop_test(self, inp, body, out):
     """Runs a test of a simple loop.
@@ -348,7 +379,7 @@ class AutoMixedPrecisionTest(test.TestCase):
         expected_types.append(section_expected_types)
 
       a = _build_simple_loop_graph(inp, body, out)
-      output_val_ref, output_val, cost_graph = self._run(a)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(a)
       node_map = _build_node_map(cost_graph.node)
 
       section_names = ['input', 'while/body', 'output']
@@ -376,9 +407,9 @@ class AutoMixedPrecisionTest(test.TestCase):
         x = _conv_bn(x)
         output = _conv_bn(x)
 
-        output_val_ref, output_val, cost_graph = self._run(output)
+        output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
         node_map = _build_node_map(cost_graph.node)
-        num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(partition_graphs[0])
 
         self._assert_output_fp16(node_map, 'Conv2D')
         self._assert_output_fp16(node_map, 'FusedBatchNormV3')
@@ -387,6 +418,54 @@ class AutoMixedPrecisionTest(test.TestCase):
                          3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
         self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
         self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_conv3d_bn(self):
+    """Test graph with convolution followed by batch norm."""
+    with compat.forward_compatibility_horizon(2019, 11, 11):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        x = _input([2, 8, 8, 8, 1])
+        x = _conv3d_bn(x)
+        output = _conv3d_bn(x)
+
+        output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(partition_graphs[0])
+
+        self._assert_output_fp16(node_map, 'Conv3D')
+        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'Conv3D_1')
+        self.assertEqual(num_to_fp16,
+                         3)  # Before Conv3D:0, Conv3D:1, Conv3D_1:1
+        self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
+        self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=1e-3)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_conv3d(self):
+    """Test grad ops with convolution3d graph."""
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = _input([2, 8, 8, 8, 1])
+      f = _weight([3, 3, 3, 1, 6])
+      y = _conv3d(x, f)
+      y = array_ops.identity(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(
+          learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x, f])
+      output = (y, g)
+
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+      self._assert_output_fp16(node_map, 'Conv3D')
+      self._assert_output_fp16(node_map,
+                               'gradients/Conv3D_grad/Conv3DBackpropInputV2')
+      self._assert_output_fp16(node_map,
+                               'gradients/Conv3D_grad/Conv3DBackpropFilterV2')
+
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
@@ -405,14 +484,14 @@ class AutoMixedPrecisionTest(test.TestCase):
         g = optimizer.compute_gradients(y, [x])
         output = (y, g)
 
-        output_val_ref, output_val, cost_graph = self._run(output)
+        output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
         node_map = _build_node_map(cost_graph.node)
         self._assert_output_fp16(node_map, 'Conv2D')
         self._assert_output_fp16(node_map, 'FusedBatchNormV3')
         self._assert_output_fp16(node_map, 'dropout/mul')
         self._assert_output_fp16(node_map, 'Conv2D_1')
 
-        output_val_ref, output_val, cost_graph = self._run(output)
+        output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
         self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
@@ -424,15 +503,15 @@ class AutoMixedPrecisionTest(test.TestCase):
       x = _input([2, 8, 8, 1])
       output = _conv_pool(x)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
-      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+      num_to_fp16, num_to_fp32 = _count_casts(partition_graphs[0])
 
       self._assert_output_fp16(node_map, 'Conv2D')
       self._assert_output_fp16(node_map, 'Relu')
       self._assert_output_fp16(node_map, 'MaxPool')
       self._assert_output_fp16(node_map, 'Conv2D_1')
-      self.assertEqual(num_to_fp16, 4)
+      self.assertEqual(num_to_fp16, 3)
       self.assertEqual(num_to_fp32, 1)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
@@ -448,7 +527,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(y, [x])
       output = (y, g)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'while/MatMul')
@@ -468,7 +547,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(k, [x])
       output = (k, l, g)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'while/MatMul')
@@ -494,7 +573,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(y, [x])
       output = (y, g)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'split')
@@ -519,7 +598,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(y, [x])
       output = (g, y)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'MatMul')
@@ -541,7 +620,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(h, [init_c, init_h])
       output = (h, g)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'while/concat')
@@ -610,12 +689,85 @@ class AutoMixedPrecisionTest(test.TestCase):
       g = optimizer.compute_gradients(y, [x])
       output = (g, y)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
       node_map = _build_node_map(cost_graph.node)
 
       self._assert_output_fp16(node_map, 'MatMul')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
+  @test_util.run_deprecated_v1
+  def test_ingraph_train_loop(self):
+    """Tests a graph containing a while loop around a training update.
+
+    This requires the grappler pass to take special care with its handling of
+    Enter ops that appear in front of reads from non-resource variables. See
+    the use of NodeImplicitlyReadsVariable in auto_mixed_precision.cc.
+    """
+    if tf2.enabled():
+      # This test tests non-resource variables, which are only used in TF1.
+      self.skipTest('TensorFlow 1 required')
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(1234)
+      np.random.seed(1234)
+      num_iter, bs, nchan, nclass = 100, 64, 32, 100
+
+      data = np.random.normal(size=(bs * num_iter, nchan)).astype(np.float32)
+      labels = np.random.randint(nclass, size=(bs * num_iter,))
+      ds = dataset_ops.Dataset.from_tensor_slices((data, labels))
+      ds = ds.batch(bs).prefetch(3)
+      it = ds.make_one_shot_iterator()
+
+      def body(_, i):
+        i += 1
+        x, yt = it.get_next()
+        dense = layers.Dense(nclass)
+        y = dense(x)
+        loss = losses.sparse_softmax_cross_entropy(yt, y)
+        opt = adam.AdamOptimizer()
+        train_op = opt.minimize(loss, var_list=dense.trainable_weights)
+        with ops.control_dependencies([train_op]):
+          loss = array_ops.identity(loss)
+        return loss, i
+
+      begin, end = constant_op.constant(0), constant_op.constant(num_iter)
+      loss, _ = control_flow_ops.while_loop(
+          lambda loss, i: math_ops.less(i, end), body, [0.0, begin])
+
+      output_val_ref, output_val, cost_graph, partition_graphs = self._run(loss)
+      node_map = _build_node_map(cost_graph.node)
+
+      self._assert_output_fp16(node_map, 'while/dense/MatMul')
+      self._assert_output_fp16(
+          node_map, 'while/gradients/while/dense/MatMul_grad/MatMul_1')
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+
+  @test_util.run_deprecated_v1
+  def test_scope_disable(self):
+    """Test graph with convolution followed by batch norm."""
+    with compat.forward_compatibility_horizon(2019, 11, 11):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        y = _input([2, 8, 8, 1])
+        with auto_mixed_precision_scope(False):
+          x = _conv_bn(y)
+          with auto_mixed_precision_scope(True):
+            x = _conv_bn(x)
+        output = gradients.gradients(x, [y])
+        output_val_ref, output_val, cost_graph, partition_graphs = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(partition_graphs[0])
+
+        self._assert_output_fp32(node_map, 'Conv2D')
+        self._assert_output_fp32(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'Conv2D_1')
+        self._assert_output_fp32(node_map, 'FusedBatchNormV3_1')
+        self._assert_output_fp32(node_map,
+                                 'gradients/Conv2D_grad/Conv2DBackpropInput')
+        self._assert_output_fp16(node_map,
+                                 'gradients/Conv2D_1_grad/Conv2DBackpropInput')
+        self.assertEqual(num_to_fp16, 2)  # Before Conv2D_1:0, Conv2D_1:1
+        self.assertEqual(num_to_fp32, 2)  # After Conv2D_1 and Conv2D_1_grad
+        self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 if __name__ == '__main__':
   test.main()

@@ -29,6 +29,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -91,6 +92,7 @@ class LSTMTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       return self.evaluate([m, c])
 
+  @test_util.run_deprecated_v1
   def testLSTMCell(self):
     # Run with all-0 weights, no padding.
     m, c = self._RunLSTMCell('zeros', init_ops.zeros_initializer(), 0., 0., 0.)
@@ -176,6 +178,7 @@ class LSTMTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       return self.evaluate(out_seq)
 
+  @test_util.run_deprecated_v1
   def testLSTMLayer(self):
     # Run with all-0 weights, no padding.
     o = self._RunLSTMLayer('zeros', init_ops.zeros_initializer(), 0., 0., 0.)
