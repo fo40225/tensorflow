@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
 
@@ -121,6 +122,32 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
 // A helper function to decide whether to enable the automatic mixed precision
 // optimizer.
 bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
+  // Warn if AMP env vars are set.
+  bool r;
+  TF_CHECK_OK(
+      ReadBoolFromEnvVar("TF_ENABLE_AUTO_MIXED_PRECISION_GRAPH_REWRITE",
+                         /*default_val=*/false, &r));
+  if (r) {
+      LOG(WARNING) << "TF_ENABLE_AUTO_MIXED_PRECISION_GRAPH_REWRITE"
+                   << " has no effect.";
+  }
+
+  TF_CHECK_OK(
+      ReadBoolFromEnvVar("TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING",
+                         /*default_val=*/false, &r));
+  if (r) {
+      LOG(WARNING) << "TF_ENABLE_AUTO_MIXED_PRECISION_LOSS_SCALING"
+                   << " has no effect.";
+  }
+
+  TF_CHECK_OK(
+      ReadBoolFromEnvVar("TF_ENABLE_AUTO_MIXED_PRECISION",
+                         /*default_val=*/false, &r));
+  if (r) {
+      LOG(WARNING) << "TF_ENABLE_AUTO_MIXED_PRECISION"
+                   << " has no effect.";
+  }
+
   if (opt_level == RewriterConfig::ON ||
       opt_level == RewriterConfig::AGGRESSIVE) {
     return true;

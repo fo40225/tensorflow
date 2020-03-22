@@ -24,4 +24,8 @@ tf_module {
     name: "enable_mixed_precision_graph_rewrite"
     argspec: "args=[\'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=[\'dynamic\'], "
   }
+  member_method {
+    name: "auto_mixed_precision_scope"
+    argspec: "args=[\'select\'], varargs=None, keywords=None, defaults=[True], "
+  }
 }

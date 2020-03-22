@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.compiler.tests import test_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.xla import jit
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -55,6 +56,7 @@ class DenseLayerTest(test.TestCase):
     return xla_run_count
 
 
+  @test_util.run_deprecated_v1
   def testDenseLayerAutoJit(self):
     """Tests dense layer compilation in auto-jit mode.
 
@@ -85,6 +87,7 @@ class DenseLayerTest(test.TestCase):
     self.assertEqual(1, self.countXlaOps(labels))
     self.assertFalse(InLabels(labels, "MatMult"))
 
+  @test_util.run_deprecated_v1
   def testDenseLayerJitScopeDefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
 
@@ -111,6 +114,7 @@ class DenseLayerTest(test.TestCase):
     # No need to check whether ListDiff is compiled or not because ListDiff op
     # is not used when input tensor shape is fully defined.
 
+  @test_util.run_deprecated_v1
   def testDenseLayerJitScopeUndefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
     """

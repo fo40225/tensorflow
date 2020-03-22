@@ -423,7 +423,7 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_cuda([
+    ] + if_nccl([
         "@local_config_nccl//:nccl",
     ]),
 )
@@ -566,6 +566,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@nvtx_archive//:nvtx",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:cuda_stream",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
@@ -670,6 +671,7 @@ cc_library(
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/stream_executor/cuda:cuda_helpers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

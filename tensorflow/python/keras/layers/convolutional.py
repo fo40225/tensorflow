@@ -94,6 +94,7 @@ class Conv(Layer):
     trainable: Boolean, if `True` the weights of this layer will be marked as
       trainable (and listed in `layer.trainable_weights`).
     name: A string, the name of the layer.
+    fused: Use fused dilated convolution kernel. This is only supported on GPUs.
   """
 
   def __init__(self, rank,
@@ -114,6 +115,7 @@ class Conv(Layer):
                bias_constraint=None,
                trainable=True,
                name=None,
+               fused=False,
                **kwargs):
     super(Conv, self).__init__(
         trainable=trainable,
@@ -142,6 +144,7 @@ class Conv(Layer):
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=self.rank + 2)
+    self.fused = fused
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -182,7 +185,8 @@ class Conv(Layer):
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=self._padding_op,
-        data_format=self._conv_op_data_format)
+        data_format=self._conv_op_data_format,
+        fused=self.fused)
     self.built = True
 
   def call(self, inputs):
@@ -357,6 +361,7 @@ class Conv1D(Conv):
       the output of the layer (its "activation")..
     kernel_constraint: Constraint function applied to the kernel matrix.
     bias_constraint: Constraint function applied to the bias vector.
+    fused: Use fused dilated convolution kernel. This is only supported on GPUs.
 
   Examples:
     ```python
@@ -395,6 +400,7 @@ class Conv1D(Conv):
                activity_regularizer=None,
                kernel_constraint=None,
                bias_constraint=None,
+               fused=False,
                **kwargs):
     super(Conv1D, self).__init__(
         rank=1,
@@ -413,6 +419,7 @@ class Conv1D(Conv):
         activity_regularizer=regularizers.get(activity_regularizer),
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
+        fused=fused,
         **kwargs)
 
 
@@ -475,6 +482,7 @@ class Conv2D(Conv):
       the output of the layer (its "activation")..
     kernel_constraint: Constraint function applied to the kernel matrix.
     bias_constraint: Constraint function applied to the bias vector.
+    fused: Use fused dilated convolution kernel. This is only supported on GPUs.
 
   Input shape:
     4D tensor with shape:
@@ -506,6 +514,7 @@ class Conv2D(Conv):
                activity_regularizer=None,
                kernel_constraint=None,
                bias_constraint=None,
+               fused=False,
                **kwargs):
     super(Conv2D, self).__init__(
         rank=2,
@@ -524,6 +533,7 @@ class Conv2D(Conv):
         activity_regularizer=regularizers.get(activity_regularizer),
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
+        fused=fused,
         **kwargs)
 
 

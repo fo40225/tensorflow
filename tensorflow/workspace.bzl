@@ -13,7 +13,7 @@ load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
-load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_http_debian_package")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
@@ -156,9 +156,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_google_absl",
+        patch_file = clean_dep("//third_party:string_view_h.patch"),
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved.
-        patch_file = clean_dep("//third_party:com_google_absl_fix_mac_build.patch"),
         sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",
         strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
         urls = [
@@ -726,6 +725,17 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.8.0.zip",
             "https://github.com/NVlabs/cub/archive/1.8.0.zip",
+        ],
+    )
+
+    tf_http_debian_package(
+        name = "nvtx_archive",
+        build_file = clean_dep("//third_party:nvtx.BUILD"),
+        sha256 = "8b59a91e1de5015024dc4cbe9d21805f4eebeed8fbe1db944b10a316e609f27e",
+        strip_prefix = "usr/local/cuda-10.1/targets/x86_64-linux/include",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-nvtx-10-1_10.1.243-1_amd64.deb",
+            "http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-nvtx-10-1_10.1.243-1_amd64.deb",
         ],
     )
 

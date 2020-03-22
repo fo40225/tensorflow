@@ -104,6 +104,8 @@ class BincountTest(test_util.TensorFlowTestCase):
           self.evaluate(math_ops.bincount(np.arange(1000), np.zeros(1000))),
           np.zeros(1000))
 
+  #TODO(mconley): Disabling in 2.0 until solution is found with TF Bug 32755
+  @test_util.run_deprecated_v1
   def test_negative(self):
     # unsorted_segment_sum will only report InvalidArgumentError on CPU
     with self.cached_session(), ops.device("/CPU:0"):
