@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 
 #if GOOGLE_CUDA
-#include "cuda/include/nvToolsExt.h"
+#include "cuda/include/nvtx3/nvToolsExt.h"
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"

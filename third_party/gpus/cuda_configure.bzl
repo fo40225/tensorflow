@@ -528,7 +528,11 @@ def lib_name(base_name, cpu_value, version = None, static = False):
             return "lib%s.a" % base_name
         return "lib%s.so%s" % (base_name, version)
     elif cpu_value == "Windows":
-        return "%s.lib" % base_name
+        # TODO: fix hard code
+        if base_name == "nvToolsExt":
+            return "/lib/x64/nvToolsExt64_1.lib"
+        else:
+            return "%s.lib" % base_name
     elif cpu_value == "Darwin":
         if static:
             return "lib%s.a" % base_name
@@ -666,7 +670,7 @@ def _find_libs(repository_ctx, cuda_config):
             "nvToolsExt",
             repository_ctx,
             cpu_value,
-            cuda_config.config["cuda_library_dir"],
+            cuda_config.nvToolsExt_path,
             "1",
         ),
         "cupti": _find_cuda_lib(
@@ -737,6 +741,12 @@ def _get_cuda_config(repository_ctx):
     else:
         cuda_lib_version = cuda_version
 
+    if cpu_value == "Windows":
+        # TODO: fix hard code
+        nvToolsExt_path = "C:/Program Files/NVIDIA Corporation/NvToolsExt"
+    else:
+        nvToolsExt_path = toolkit_path
+
     return struct(
         cuda_toolkit_path = toolkit_path,
         cuda_version = cuda_version,
@@ -745,6 +755,7 @@ def _get_cuda_config(repository_ctx):
         compute_capabilities = compute_capabilities(repository_ctx),
         cpu_value = cpu_value,
         config = config,
+        nvToolsExt_path=nvToolsExt_path,
     )
 
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
