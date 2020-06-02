@@ -1039,24 +1039,26 @@ def _create_local_cuda_repository(repository_ctx):
         ],
     ))
 
-    if [int(x) for x in cuda_config.cudnn_version.split(".")] < [8, 0]:
-      cudnn_headers = ["cudnn.h"]
+    # Select the headers based on the cuDNN version (strip '64_' for Windows).
+    if cuda_config.cudnn_version.rsplit("_", 1)[0] < "8":
+        cudnn_headers = ["cudnn.h"]
     else:
-      cudnn_headers = ["cudnn_adv_infer.h",
-                       "cudnn_adv_train.h",
-                       "cudnn_cnn_infer.h",
-                       "cudnn_cnn_train.h",
-                       "cudnn_ops_infer.h",
-                       "cudnn_ops_train.h",
-                       "cudnn.h",          
-                       "cudnn_version.h",
-                      ]
+        cudnn_headers = [
+            "cudnn_adv_infer.h",
+            "cudnn_adv_train.h",
+            "cudnn_cnn_infer.h",
+            "cudnn_cnn_train.h",
+            "cudnn_ops_infer.h",
+            "cudnn_ops_train.h",
+            "cudnn.h",
+            "cudnn_version.h",
+        ]
 
     cudnn_srcs = []
     cudnn_outs = []
     for header in cudnn_headers:
-      cudnn_srcs.append(cudnn_header_dir + '/' + header)
-      cudnn_outs.append("cudnn/include/" + header)
+        cudnn_srcs.append(cudnn_header_dir + "/" + header)
+        cudnn_outs.append("cudnn/include/" + header)
 
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
