@@ -150,7 +150,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += undefines
   nvccopts += defines
   nvccopts += m_options
-  nvccopts += ['--compiler-options="' + " ".join(host_compiler_options) + '"']
+  nvccopts += ['--compiler-options=' + ",".join(host_compiler_options)]
   nvccopts += ['-x', 'cu'] + opt + includes + out + ['-c'] + src_files
   # Specify a unique temp directory for nvcc to generate intermediate files,
   # then Bazel can ignore files under NVCC_TEMP_DIR during dependency check
